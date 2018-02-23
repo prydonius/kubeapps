@@ -2,51 +2,38 @@ language: go
 go:
   - 1.9
 go_import_path: github.com/kubeapps/kubeapps
+sudo: required
+
+addons:
+  apt:
+    packages:
+      # cross compiling for windows
+      - mingw-w64
 
 env:
   global:
   - VERSION=${TRAVIS_TAG:-build-$TRAVIS_BUILD_ID}
   - GO_XFLAGS=""
 
+install:
+- |
+  if ! which kubecfg; then
+    wget -O kubecfg https://github.com/ksonnet/kubecfg/releases/download/v0.7.2/kubecfg-$(go env GOOS)-$(go env GOARCH)
+    install -m 755 kubecfg $GOPATH/bin/kubecfg
+  fi
+
 jobs:
   include:
   - stage: test
     script: make test
+
+  # 3 parallel build stage jobs for cross-compilation
   - stage: build
-    env:
-      matrix:
-      - TARGET=x86_64-w64-mingw32
-      - TARGET=""
-      - TARGET=x86_64-apple-darwin15-clang
-    script:
-    - |
-      if [ "$TARGET" == "x86_64-w64-mingw32" ]; then
-        export CC="$TARGET-gcc"
-        export CXX="$TARGET-g++"
-        export GOOS="windows"
-        export GOARCH="amd64"
-        GO_XFLAGS="-ldflags='-extldflags \"-static\"'"
-        go env
-      fi
-    - |
-      if [ "$TARGET" == "x86_64-apple-darwin15-clang" ]; then
-        git clone https://github.com/tpoechtrager/osxcross
-        sudo $PWD/osxcross/tools/get_dependencies.sh
-        wget -O $PWD/osxcross/tarballs/MacOSX10.11.sdk.tar.xz \
-          https://storage.googleapis.com/osx-cross-compiler/MacOSX10.11.sdk.tar.xz
-        UNATTENDED=1 OSX_VERSION_MIN=10.9 $PWD/osxcross/build.sh
-        export PATH=$PATH:$PWD/osxcross/target/bin/
-        export CC="$TARGET"
-        export CXX="$TARGET++"
-        export GOOS="darwin"
-        export GOARCH="amd64"
-        go env
-      fi
-    - |
-      if [ "$TARGET" == "" ]; then
-        export GOOS="linux"
-        export GOARCH="amd64"
-        go env
-      fi
-    - make VERSION="$VERSION" GO_XFLAGS="$GO_XFLAGS" binary-travis
-    - file kubeapps
+    env: PLATFORM=linux-amd64
+    script: make VERSION="$VERSION" kubeapps-$PLATFORM
+  - stage: build
+    env: PLATFORM=darwin-amd64
+    script: make VERSION="$VERSION" osxcross kubeapps-$PLATFORM
+  - stage: build
+    env: PLATFORM=windows-amd64
+    script: make VERSION="$VERSION" GO_XFLAGS="-ldflags='-extldflags \"-static\"'" kubeapps-$PLATFORM
