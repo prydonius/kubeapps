@@ -25,13 +25,16 @@ binary-travis: build-prep  $(EMBEDDED_STATIC)-travis
 test: build-prep $(EMBEDDED_STATIC)
 	$(GO) test $(GO_FLAGS) $(GO_PACKAGES)
 
-$(EMBEDDED_STATIC): build-prep $(wilcard static/*)
+$(EMBEDDED_STATIC): build-prep static/kubeapps-objs.yaml
 	$(GO) build -o statik ./vendor/github.com/rakyll/statik/statik.go
 	$(GO) generate
 
-$(EMBEDDED_STATIC)-travis: build-prep $(wilcard static/*)
+$(EMBEDDED_STATIC)-travis: build-prep static/kubeapps-objs.yaml
 	GOOS=linux $(GO) build -o statik ./vendor/github.com/rakyll/statik/statik.go
 	GOOS=linux $(GO) generate
+
+static/kubeapps-objs.yaml:
+	KUBECFG_JPATH=./manifests/lib:./manifests/vendor/kubecfg/lib:./manifests/vendor/ksonnet-lib kubecfg show manifests/kubeapps.jsonnet > static/kubeapps-objs.yaml
 
 build-prep:
 	mkdir -p $(dir $(GOPATH_TMP)/src/$(IMPORT_PATH))

@@ -1,4 +1,6 @@
 /kubeapps
 /statik
+/generated
+/static/*.yaml
 .GOPATH
 *.*~
