@@ -1,6 +1,7 @@
 language: go
 go:
 - 1.9
+go_import_path: github.com/kubeapps/kubeapps
 
 env:
   global:
@@ -42,8 +43,8 @@ jobs:
       overwrite: true
       on:
         tags: true
-        branch: master
-        repo: kubeapps/kubeapps
+        branch: build-improvements
+        repo: prydonius/kubeapps
   - <<: *cliBuild
     env: BINARY=kubeapps-darwin-amd64 GOOS=darwin GOOS=amd64
   - <<: *cliBuild
