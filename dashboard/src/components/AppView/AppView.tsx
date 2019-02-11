@@ -3,21 +3,20 @@ import * as yaml from "js-yaml";
 import * as _ from "lodash";
 import * as React from "react";
 
-import AccessURLTable from "../../containers/AccessURLTableContainer";
-import DeploymentStatus from "../../containers/DeploymentStatusContainer";
-import { Kube } from "../../shared/Kube";
+// import AccessURLTable from "../../containers/AccessURLTableContainer";
+// import DeploymentStatus from "../../containers/DeploymentStatusContainer";
 import ResourceRef from "../../shared/ResourceRef";
 import { IK8sList, IRBACRole, IRelease, IResource } from "../../shared/types";
 import { ErrorSelector } from "../ErrorAlert";
 import LoadingWrapper from "../LoadingWrapper";
-import AppControls from "./AppControls";
-import AppNotes from "./AppNotes";
+// import AppControls from "./AppControls";
+// import AppNotes from "./AppNotes";
 import "./AppView.css";
 import ChartInfo from "./ChartInfo";
-import DeploymentsTable from "./DeploymentsTable";
+// import DeploymentsTable from "./DeploymentsTable";
 import OtherResourcesTable from "./OtherResourcesTable";
-import SecretsTable from "./SecretsTable";
-import ServicesTable from "./ServicesTable";
+// import SecretsTable from "./SecretsTable";
+// import ServicesTable from "./ServicesTable";
 
 export interface IAppViewProps {
   namespace: string;
@@ -34,21 +33,9 @@ export interface IAppViewProps {
 }
 
 interface IAppViewState {
-  deployRefs: ResourceRef[];
-  serviceRefs: ResourceRef[];
-  ingressRefs: ResourceRef[];
-  secretRefs: ResourceRef[];
-  // Other resources are not IKubeItems because
-  // we are not fetching any information for them.
-  otherResources: IResource[];
-  manifest: IResource[];
-}
-
-interface IPartialAppViewState {
-  deployRefs: ResourceRef[];
-  serviceRefs: ResourceRef[];
-  ingressRefs: ResourceRef[];
-  secretRefs: ResourceRef[];
+  resourceRefs: ResourceRef[];
+  // Other resources are not stored as refs because we are not fetching any
+  // information for them.
   otherResources: IResource[];
 }
 
@@ -67,17 +54,13 @@ const RequiredRBACRoles: { [s: string]: IRBACRole[] } = {
   ],
 };
 
-class AppView extends React.Component<IAppViewProps, IAppViewState> {
+export default class AppView extends React.Component<IAppViewProps, IAppViewState> {
   public state: IAppViewState = {
-    manifest: [],
-    ingressRefs: [],
-    deployRefs: [],
     otherResources: [],
-    serviceRefs: [],
-    secretRefs: [],
+    resourceRefs: [],
   };
 
-  public async componentDidMount() {
+  public componentDidMount() {
     const { releaseName, getAppWithUpdateInfo, namespace } = this.props;
     getAppWithUpdateInfo(releaseName, namespace);
   }
@@ -101,47 +84,10 @@ class AppView extends React.Component<IAppViewProps, IAppViewState> {
     // manifest is pre-parsed by Helm and Kubernetes. Look into switching back
     // to safeLoadAll once https://github.com/nodeca/js-yaml/issues/456 is
     // resolved.
-    let manifest: IResource[] = yaml.loadAll(newApp.manifest, undefined, { json: true });
-    // Filter out elements in the manifest that does not comply
-    // with { kind: foo }
-    manifest = manifest.filter(r => r && r.kind);
-    if (!_.isEqual(manifest, this.state.manifest)) {
-      this.setState({ manifest });
-    } else {
-      return;
-    }
+    const manifest: IResource[] = yaml.loadAll(newApp.manifest, undefined, { json: true });
 
     // Iterate over the current manifest to populate the initial state
     this.setState(this.parseResources(manifest, newApp.namespace));
-  }
-
-  public handleEvent(e: MessageEvent) {
-    const msg = JSON.parse(e.data);
-    const resource: IResource = msg.object;
-    let apiResource: string;
-    switch (resource.kind) {
-      case "Deployment":
-        apiResource = "deployments";
-        break;
-      case "Service":
-        apiResource = "services";
-        break;
-      case "Ingress":
-        apiResource = "ingresses";
-        break;
-      default:
-        // Unknown resource, ignore
-        return;
-    }
-    // Construct the key used for the store
-    const resourceKey = Kube.getResourceURL(
-      resource.apiVersion,
-      apiResource,
-      resource.metadata.namespace,
-      resource.metadata.name,
-    );
-    // TODO: this is temporary before we move WebSockets to the Redux store (#882)
-    this.props.receiveResource({ key: resourceKey, resource });
   }
 
   public render() {
@@ -161,8 +107,8 @@ class AppView extends React.Component<IAppViewProps, IAppViewState> {
   }
 
   public appInfo() {
-    const { app, push } = this.props;
-    const { serviceRefs, ingressRefs, deployRefs, secretRefs, otherResources } = this.state;
+    const { app } = this.props;
+    const { otherResources } = this.state;
     return (
       <section className="AppView padding-b-big">
         <main>
@@ -181,9 +127,9 @@ class AppView extends React.Component<IAppViewProps, IAppViewState> {
                 <ChartInfo app={app} />
               </div>
               <div className="col-9">
-                <div className="row padding-t-bigger">
-                  <div className="col-4">
-                    <DeploymentStatus deployRefs={deployRefs} info={app.info!} />
+                {/* <div className="row padding-t-bigger"> */}
+                {/* <div className="col-4"> */}
+                {/* <DeploymentStatus deployRefs={deployRefs} info={app.info!} />
                   </div>
                   <div className="col-8 text-r">
                     <AppControls app={app} deleteApp={this.deleteApp} push={push} />
@@ -193,7 +139,7 @@ class AppView extends React.Component<IAppViewProps, IAppViewState> {
                 <AppNotes notes={app.info && app.info.status && app.info.status.notes} />
                 <SecretsTable secretRefs={secretRefs} />
                 <DeploymentsTable deployRefs={deployRefs} />
-                <ServicesTable serviceRefs={serviceRefs} />
+                <ServicesTable serviceRefs={serviceRefs} /> */}
                 <OtherResourcesTable otherResources={otherResources} />
               </div>
             </div>
@@ -203,54 +149,43 @@ class AppView extends React.Component<IAppViewProps, IAppViewState> {
     );
   }
 
+  // parseResources iterates through a list of resources in a manifest and
+  // returns the ResourceRefs and otherResources to set in the state.
   private parseResources(
     resources: Array<IResource | IK8sList<IResource, {}>>,
     releaseNamespace: string,
-  ): IPartialAppViewState {
-    const result: IPartialAppViewState = {
-      ingressRefs: [],
-      deployRefs: [],
+  ): IAppViewState {
+    const initial: IAppViewState = {
+      resourceRefs: [],
       otherResources: [],
-      serviceRefs: [],
-      secretRefs: [],
     };
-    resources.forEach(i => {
-      const item = i as IResource;
-      const resource = { isFetching: true, item };
-      switch (i.kind) {
-        case "Deployment":
-          result.deployRefs.push(new ResourceRef(resource.item, releaseNamespace));
-          break;
-        case "Service":
-          result.serviceRefs.push(new ResourceRef(resource.item, releaseNamespace));
-          break;
-        case "Ingress":
-          result.ingressRefs.push(new ResourceRef(resource.item, releaseNamespace));
-          break;
-        case "Secret":
-          result.secretRefs.push(new ResourceRef(resource.item, releaseNamespace));
-          break;
-        case "List":
-          // A List can contain an arbitrary set of resources so we treat them as an
-          // additional manifest. We merge the current result with the resources of
-          // the List, concatenating items from both.
-          _.assignWith(
-            result,
-            this.parseResources((i as IK8sList<IResource, {}>).items, releaseNamespace),
-            // Merge the list with the current result
-            (prev, newArray) => prev.concat(newArray),
-          );
-          break;
-        default:
-          result.otherResources.push(item);
+    return resources.reduce((acc, r) => {
+      if (!r.kind) {
+        // invalid IResource or IK8sList, ignore
+        return acc;
       }
-    });
-    return result;
+
+      if (r.kind === "List") {
+        r = r as IK8sList<IResource, {}>;
+        const recurse = this.parseResources(r.items, releaseNamespace);
+        return {
+          resourceRefs: [...acc.resourceRefs, ...recurse.resourceRefs],
+          otherResources: [...acc.otherResources, ...recurse.otherResources],
+        };
+      }
+
+      r = r as IResource;
+      if (["Deployment", "Service", "Ingress", "Secret"].indexOf(r.kind) >= 0) {
+        acc.resourceRefs.push(new ResourceRef(r, releaseNamespace));
+      } else {
+        acc.otherResources.push(r);
+      }
+
+      return acc;
+    }, initial);
   }
 
-  private deleteApp = (purge: boolean) => {
-    return this.props.deleteApp(this.props.releaseName, this.props.namespace, purge);
-  };
+  // private deleteApp = (purge: boolean) => {
+  //   return this.props.deleteApp(this.props.releaseName, this.props.namespace, purge);
+  // };
 }
-
-export default AppView;
